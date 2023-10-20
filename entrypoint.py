@@ -1,3 +1,5 @@
+import sys
+import argparse
 import os
 import time
 import json
@@ -14,10 +16,6 @@ from endpoints import Patient, DocumentReference, Binary
 DOTENV_PATH = find_dotenv()
 if DOTENV_PATH:
     load_dotenv(DOTENV_PATH)
-
-PATH = "./bulk-export"
-if not os.path.exists(PATH):
-    os.makedirs(PATH)
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -38,6 +36,14 @@ TARGET_ENDPOINT_LIST = (
     Patient,
     DocumentReference,
 )
+
+
+class CustomParser(argparse.ArgumentParser):
+    def error(self, message):
+        sys.stderr.write(f"\nerror: {message}\n\n")
+        if not isinstance(sys.exc_info()[1], argparse.ArgumentError):
+            self.print_help()
+        sys.exit(2)
 
 
 def get_resource(url, headers, secs=0.05):
@@ -62,13 +68,36 @@ def get_resource(url, headers, secs=0.05):
     return resp, url
 
 
+# Instantiate a parser
+parser = CustomParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+# Required arguments
+parser.add_argument("source", help="Path to a source manifest")
+
+# Optional arguments
+parser.add_argument(
+    "--target",
+    required=False,
+    default="./bulk-export",
+    help="Path to a target location",
+)
+
+# Parse arguments
+args = parser.parse_args()
+source, target = args.source, args.target
+
+# Create the target location if not exists
+if not os.path.exists(target):
+    os.makedirs(target)
+
 print("🚀 Start bulk exporting!")
 
 start = time.time()
 
 # Read in enrollment information from a file
 # TODO: Read in enrollment information from RDS
-manifest = pd.read_csv("./manifest.csv", dtype="object")
+sep = "," if source.endswith(".csv") else "\t"
+manifest = pd.read_csv(source, sep=sep, dtype="object")
 
 # Loop over the list of MRNs
 for mrn in manifest["mrn"]:
@@ -77,7 +106,7 @@ for mrn in manifest["mrn"]:
 
     print(f"  ⏳ Exporting {mrn}...")
 
-    with open(f"./{PATH}/{mrn}.ndjson", mode="w") as outfile:
+    with open(f"./{target}/{mrn}.ndjson", mode="w") as outfile:
         patient_id, binary_id_list = None, []
         for endpoint in TARGET_ENDPOINT_LIST:
             print(f"    🍱 Pulling {endpoint.api_group}...")
