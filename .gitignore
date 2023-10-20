@@ -161,5 +161,6 @@ cython_debug/
 #.idea/
 
 # Data caches
-manifest.csv
-bulk-export/
+*.csv
+*.tsv
+bulk-export*/
